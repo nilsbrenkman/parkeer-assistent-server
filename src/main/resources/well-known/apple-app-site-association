@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [ "NVWAZSZHJQ.nl.parkeer-assistent.amsterdam" ],
+        "components": [
+          {
+            "/": "/",
+            "comment": "Matches the main app url"
+          },
+          {
+            "/completePayment": "/completePayment",
+            "comment": "Completes a balance top up"
+          }
+        ]
+      }
+    ]
+  }
+}
