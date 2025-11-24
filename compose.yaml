@@ -1,0 +1,10 @@
+name: parkeer-assistent
+services:
+  app:
+    container_name: parkeer-assistent
+    image: nilsbrenkman/parkeerassistent:3.0.1
+    build: .
+    ports:
+    - "3000:3000"
+    environment:
+    - PORT=3000

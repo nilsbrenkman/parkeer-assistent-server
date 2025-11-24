@@ -1,11 +1,10 @@
 #!/bin/zsh
 
-TAG="2.0.7"
+TAG="3.0.1"
 
-docker buildx build \
-  --builder desktop-remote \
+docker build \
   --platform linux/amd64,linux/arm64 \
   --push \
   -t nilsbrenkman/parkeerassistent:"$TAG" .
 
-docker pull nilsbrenkman/parkeerassistent:"$TAG"
+docker push nilsbrenkman/parkeerassistent:"$TAG"

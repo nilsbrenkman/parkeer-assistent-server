@@ -17,7 +17,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class MockState {
 
@@ -55,33 +55,33 @@ class MockState {
 
     init {
         log.info("Creating MockState")
-        user = User(false, idGenerator.getId().toLong())
+        user = User(false)
 
         startPayment(PaymentRequest("25,00", "SUCCESS"))
 
         visitorList = mutableListOf(
-            Visitor(idGenerator.getId(), user.reportCode, "111-AA-1", "Suzanne"),
-            Visitor(idGenerator.getId(), user.reportCode, "22-BBB-2", "Erik"),
+            Visitor(idGenerator.getId(), "111-AA-1", "Suzanne"),
+            Visitor(idGenerator.getId(), "22-BBB-2", "Erik"),
         )
         parkingList = mutableListOf()
 
-        startParking(AddParkingRequest(visitorList[0].convert(), 15, Date().addingMinutes(-14), user.regimeEnd))
-        startParking(AddParkingRequest(visitorList[1].convert(), 60, Date().addingMinutes(2), user.regimeEnd))
-        startParking(AddParkingRequest(visitorList[0].convert(), 60, Date().addingMinutes(-2 * 60), user.regimeEnd))
+        startParking(AddParkingRequest(visitorList[0].license, 15, Date().addingMinutes(-14), 1, 2, 55105))
+        startParking(AddParkingRequest(visitorList[1].license, 60, Date().addingMinutes(2), 1, 2, 55105))
+        startParking(AddParkingRequest(visitorList[0].license, 60, Date().addingMinutes(-2 * 60), 1, 2, 55105))
     }
 
     fun startParking(request: AddParkingRequest) {
         val calendar = Calendar.getInstance()
-        calendar.time = request.start?.let { start -> DateUtil.dateTime.parse(start) } ?: run { Date() }
+        calendar.time = request.start?.let { start -> DateUtil.dateTime.parse(start) } ?: Date()
         calendar.add(Calendar.SECOND, 1)
         val start = calendar.time
         calendar.add(Calendar.MINUTE, request.timeMinutes)
         val end = calendar.time
 
         val parking = Parking(
-            idGenerator.getId().toLong(),
-            request.visitor.license,
-            request.visitor.name,
+            idGenerator.getId(),
+            request.license,
+            "",
             start,
             end
         )
@@ -103,10 +103,10 @@ class MockState {
     }
 
     fun addVisitor(name: String, license: String) {
-        visitorList.add(Visitor(idGenerator.getId(), user.reportCode, license, name))
+        visitorList.add(Visitor(idGenerator.getId(), license, name))
     }
 
-    fun deleteVisitor(id: Int) {
+    fun deleteVisitor(id: Long) {
         visitorList.removeIf { visitor -> visitor.id == id }
     }
 
@@ -124,10 +124,8 @@ class MockState {
         return StatusResponse(payment.status)
     }
 
-    class User(var loggedIn: Boolean,
-               val reportCode: Long) {
+    class User(var loggedIn: Boolean) {
 
-        val hourRate get() = MockState.hourRate
         val regime = Regime(
             listOf(
                 RegimeDay("MON", "09:00", "21:00"),
@@ -158,13 +156,12 @@ class MockState {
 
     }
 
-    class Visitor(val id: Int,
-                  val permitId: Long,
+    class Visitor(val id: Long,
                   val license: String,
                   val name: String?) {
 
         fun convert(): nl.parkeerassistent.model.Visitor {
-            return Visitor(id, permitId, license, license, name)
+            return Visitor(id, license, license, name)
         }
     }
 
@@ -211,8 +208,8 @@ class MockState {
     }
 
     class IdGenerator {
-        private var counter = AtomicInteger(0)
-        fun getId(): Int {
+        private var counter = AtomicLong(0)
+        fun getId(): Long {
             return counter.getAndAdd(1)
         }
     }

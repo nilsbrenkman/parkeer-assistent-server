@@ -24,11 +24,9 @@ import nl.parkeerassistent.model.Issuer
 import nl.parkeerassistent.model.LoginRequest
 import nl.parkeerassistent.model.ParkingResponse
 import nl.parkeerassistent.model.PaymentRequest
-import nl.parkeerassistent.model.RegimeResponse
 import nl.parkeerassistent.model.Response
 import nl.parkeerassistent.model.UserResponse
 import nl.parkeerassistent.model.VisitorResponse
-import nl.parkeerassistent.util.DateUtil
 import java.util.Optional
 import javax.naming.NoPermissionException
 
@@ -58,11 +56,12 @@ fun Route.mockRouting() {
             val user = MockStateContainer.mock().user
             call.respond(
                 UserResponse(
-                    "%.2f".format(MockStateContainer.mock().balance),
-                    user.hourRate,
-                    user.regimeStart,
-                    user.regimeEnd,
-                    user.regime
+                    balance = "%.2f".format(MockStateContainer.mock().balance),
+                    hourRate = 2.34,
+                    productId = 0,
+                    zoneId = 1,
+                    parkingMeterId = 55105,
+                    regime = user.regime,
                 )
             )
         }
@@ -70,11 +69,11 @@ fun Route.mockRouting() {
             preCheck(call)
             call.respond(BalanceResponse("%.2f".format(MockStateContainer.mock().balance)))
         }
-        get("/regime/{date}") {
+        get("/regime/{id}") {
             preCheck(call)
-            val date = ensureData(call.parameters["date"], "date")
-            val (start, end) = MockStateContainer.mock().user.regimeForDate(DateUtil.date.parse(date))
-            call.respond(RegimeResponse(start, end))
+            val date = call.parameters["id"]?.toLong() ?: throw Exception("id is required")
+//            val (start, end) = MockStateContainer.mock().user.regimeForDate(DateUtil.date.parse(date))
+//            call.respond(RegimeResponse(start, end))
         }
     }
     route("/parking") {
@@ -113,7 +112,7 @@ fun Route.mockRouting() {
             call.respond(Response(true, ""))
         }
         delete("/{id}") {
-            val id = ensureData(call.parameters["id"]?.toInt(), "visitor id")
+            val id = ensureData(call.parameters["id"]?.toLong(), "visitor id")
             preCheck(call)
 
             MockStateContainer.mock().deleteVisitor(id)
@@ -152,7 +151,6 @@ fun Route.mockRouting() {
             call.respond(MockStateContainer.mock().checkPayment(id))
         }
     }
-
 }
 
 fun preCheck(call: ApplicationCall) {

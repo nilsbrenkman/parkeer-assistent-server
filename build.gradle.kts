@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "nl.parkeerassistent"
-version = "2.0.7"
+version = "3.0.1"
 
 application {
     mainClass = "nl.parkeerassistent.ApplicationKt"
@@ -34,6 +34,11 @@ dependencies {
     implementation(libs.ktor.server.rate.limit)
     implementation(libs.logback)
     implementation(libs.micrometer.registry.prometheus)
+
+    testImplementation("io.ktor:ktor-server-test-host-jvm:3.3.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.14.0")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType(JavaExec::class.java) {
@@ -41,4 +46,8 @@ tasks.withType(JavaExec::class.java) {
         val (key, value) = s.split("=")
         environment(key to value)
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

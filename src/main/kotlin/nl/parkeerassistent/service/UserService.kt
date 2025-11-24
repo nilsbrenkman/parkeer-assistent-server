@@ -2,25 +2,33 @@ package nl.parkeerassistent.service
 
 import io.ktor.client.call.body
 import io.ktor.client.request.parameter
+import io.ktor.client.request.setBody
+import io.ktor.http.CookieEncoding
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.plugins.BadRequestException
 import nl.parkeerassistent.Metrics
-import nl.parkeerassistent.client.CloudApi
-import nl.parkeerassistent.client.Session
-import nl.parkeerassistent.client.ensureData
-import nl.parkeerassistent.external.Permit
-import nl.parkeerassistent.external.Permits
+import nl.parkeerassistent.client.Api
+import nl.parkeerassistent.external.ClientProduct
+import nl.parkeerassistent.external.CostEstimateRequest
+import nl.parkeerassistent.external.CostEstimateResponse
+import nl.parkeerassistent.external.Paginated
+import nl.parkeerassistent.external.ParkingZoneRequest
+import nl.parkeerassistent.external.ParkingZoneResponse
+import nl.parkeerassistent.external.Product
 import nl.parkeerassistent.model.BalanceResponse
 import nl.parkeerassistent.model.Regime
 import nl.parkeerassistent.model.RegimeDay
 import nl.parkeerassistent.model.RegimeResponse
 import nl.parkeerassistent.model.UserResponse
 import nl.parkeerassistent.util.DateUtil
+import nl.parkeerassistent.util.DayOfWeek
+import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
-import java.time.Instant
-import java.util.Calendar
-import java.util.Date
+import kotlin.time.Duration.Companion.hours
 
 object UserService {
+
+    private val LOG = LoggerFactory.getLogger(UserService::class.java)
 
     enum class Method : ServiceMethod {
         Get,
@@ -37,97 +45,121 @@ object UserService {
         }
     }
 
-    suspend fun get(session: Session): UserResponse {
-
-        val permits = getPermits(session)
-
-        if (permits.permits.size != 1) {
-            Metrics.logAndCount(session.call, Method.Get, Level.WARN, "PERMIT_NOT_ONE")
-            throw BadRequestException("Response contained wrong number of permits [permits=${permits.permits.size}]")
+    suspend fun get(call: ApplicationCall): UserResponse {
+        val product = getProduct(call)
+        if (product == null) {
+            Metrics.logAndCount(call, Method.Get, Level.WARN, "PRODUCT_NOT_FOUND")
+            throw BadRequestException("Product not found")
         }
-        val permit = permits.permits.first()
+        call.response.cookies.append(
+            name = "product_id",
+            value = product.id.toString(),
+            encoding = CookieEncoding.DQUOTES,
+            httpOnly = true,
+            secure = false,
+        )
+        val productDetails = getClientProduct(call, product.id)
+        val (zoneId, regime) = getParkingZone(call, product.id, productDetails.ssp.parkingMeterId)
+        val hourRate = getHourRate(call, product.id, productDetails.ssp.parkingMeterId, regime)
 
-        if (session.permit?.paymentZoneId == null) {
-            session.permit = nl.parkeerassistent.client.Permit(permit.reportCode, permit.paymentZones.first().id)
+        Metrics.logAndCount(call, Method.Get, Level.INFO, "SUCCESS")
+        return UserResponse(
+            balance = formatBalance(productDetails.ssp.mainAccount.moneyBalance ?: 0),
+            hourRate = hourRate,
+            productId = product.id,
+            zoneId = zoneId,
+            parkingMeterId = productDetails.ssp.parkingMeterId,
+            regime = regime,
+        )
+    }
+
+    suspend fun balance(call: ApplicationCall): BalanceResponse {
+        val productId = call.request.cookies["product_id"]?.toLong() ?: throw Exception("product_id is required")
+        val productDetails = getClientProduct(call, productId)
+
+        Metrics.logAndCount(call, Method.Balance, Level.INFO, "SUCCESS")
+        return BalanceResponse(
+            balance = formatBalance(productDetails.ssp.mainAccount.moneyBalance ?: 0),
+        )
+    }
+
+    suspend fun regime(call: ApplicationCall): RegimeResponse {
+        val productId = call.request.cookies["product_id"]?.toLong() ?: throw Exception("product_id is required")
+        val parkingMeterId = call.parameters["id"]?.toLong() ?: throw Exception("id is required")
+        val (zoneId, regime) = getParkingZone(call, productId, parkingMeterId)
+        val hourRate = getHourRate(call, productId, parkingMeterId, regime)
+        Metrics.logAndCount(call, Method.Regime, Level.INFO, "SUCCESS")
+        return RegimeResponse(
+            hourRate = hourRate,
+            zoneId = zoneId,
+            regime = regime,
+        )
+    }
+
+    private suspend fun getProduct(call: ApplicationCall): Product? {
+        val response = Api.get(call, "/v1/permit_overview/product_list") {
+            parameter("page", "1")
+            parameter("row_per_page", "50")
         }
-
-        val regime = getRegime(permit, Instant.now())
-        val fullRegime = getFullRegime(permit)
-
-        Metrics.logAndCount(session.call, Method.Get, Level.INFO, "SUCCESS")
-        return UserResponse(formatBalance(permits), permit.parkingRate.value, regime.regimeTimeStart, regime.regimeTimeEnd, fullRegime)
+        val products = response.body<Paginated<Product>>().data
+        return products.firstOrNull { it.status == "ACTIVE" && it.permitType == "visitor" }
     }
 
-    suspend fun balance(session: Session): BalanceResponse {
-        val permits = getPermits(session)
-
-        Metrics.logAndCount(session.call, Method.Balance, Level.INFO, "SUCCESS")
-        return BalanceResponse(formatBalance(permits))
+    private suspend fun getClientProduct(call: ApplicationCall, id: Long): ClientProduct {
+        val response = Api.get(call, "/v1/client_product/$id")
+        val clientProduct = response.body<ClientProduct>()
+        return clientProduct
     }
 
-    private fun formatBalance(permits: Permits) = "%.2f".format(permits.wallet.balance)
-
-    suspend fun regime(session: Session): RegimeResponse {
-        val regimeDate = ensureData(session.call.parameters["date"], "date")
-
-        val permits = getPermits(session)
-
-        val regime = getRegime(permits.permits.first(), DateUtil.date.parse(regimeDate).toInstant())
-
-        Metrics.logAndCount(session.call, Method.Regime, Level.INFO, "SUCCESS")
-        return regime
-    }
-
-    private suspend fun getPermits(session: Session): Permits {
-        return CloudApi.get(session, "v1/permits") {
-            parameter("status", "Actief")
-        }.body()
-    }
-
-    private fun getRegime(permit: Permit, date: Instant): RegimeResponse {
-        val calendar = Calendar.getInstance()
-        calendar.time = Date.from(date)
-        val dayOfWeek = DayOfWeek.values().get(calendar.get(Calendar.DAY_OF_WEEK) - 1)
-        val day = permit.paymentZones.first().days.first{ it.dayOfWeek == dayOfWeek.alias }
-        val startTime = DateUtil.dateWithTime(calendar.time, day.startTime)
-        val endTime = DateUtil.dateWithTime(calendar.time, day.endTime)
-        return RegimeResponse(startTime, endTime)
-    }
-
-    private fun getFullRegime(permit: Permit): Regime {
-        val paymentZone = permit.paymentZones.first()
-        val days = paymentZone.days
-            .filter { d -> ! ("00:00" == d.startTime && "24:00" == d.endTime && !paymentZone.description.contains("ma-zo 00-24")) }
-            .mapNotNull { d ->
-                val dayOfWeek = DayOfWeek.fromAlias(d.dayOfWeek)
-                dayOfWeek?.let { RegimeDay(
-                    it.name,
-                    if ("00:00" == d.startTime) "00:01" else d.startTime,
-                    if ("24:00" == d.endTime) "23:59" else d.endTime
-                ) }
-            }
-        return Regime(days)
-    }
-
-    enum class DayOfWeek(val alias: String) {
-        SUN("Zondag"),
-        MON("Maandag"),
-        TUE("Dinsdag"),
-        WED("Woensdag"),
-        THU("Donderdag"),
-        FRI("Vrijdag"),
-        SAT("Zaterdag"),
-        ;
-        companion object {
-            fun fromAlias(a: String): DayOfWeek? {
-                for (d in DayOfWeek.values()) {
-                    if (d.alias == a) {
-                        return d
-                    }
-                }
-                return null
+    private suspend fun getParkingZone(call: ApplicationCall, productId: Long, parkingMeterId: Long): Pair<Long, Regime> {
+        val request = ParkingZoneRequest(
+            productId = productId,
+            parkingMeterId = parkingMeterId
+        )
+        val response = Api.post(call, "/v1/ssp/paid_parking_zone/get_by_machine_number") {
+            setBody(request)
+        }
+        val parkingZone = response.body<ParkingZoneResponse>()
+        val zoneDays = parkingZone.zone.timeFrameDate
+        val regimeDays = mutableListOf<RegimeDay>()
+        DayOfWeek.entries.forEach { day ->
+            val zoneDay = zoneDays[day.ordinal]
+            zoneDay.firstOrNull()?.let { zoneTime ->
+                regimeDays.add(RegimeDay(
+                    weekday = day.name,
+                    startTime = formatTimeHHMM(zoneTime.startTime ?: 0),
+                    endTime = formatTimeHHMM(zoneTime.endTime ?: 2359),
+                ))
             }
         }
+        return parkingZone.zone.zoneId to Regime(regimeDays)
+    }
+
+    private suspend fun getHourRate(call: ApplicationCall, productId: Long, parkingMeterId: Long, regime: Regime): Double {
+        val regimeDay = regime.days.first()
+        val startTime = DateUtil.nextDayOfWeekAt(regimeDay.weekday, regimeDay.startTime)
+        val endTime = startTime.plusHours(1)
+        val request = CostEstimateRequest(
+            productId = productId,
+            startedAt = DateUtil.rfc1123Formatter.format(startTime.toInstant()),
+            endedAt = DateUtil.rfc1123Formatter.format(endTime.toInstant()),
+            parkingMeterId = parkingMeterId,
+        )
+        val response = Api.post(call, "/v1/ssp/parking_session/cost_calculator") {
+            setBody(request)
+        }
+        val estimate = response.body<CostEstimateResponse>().parkingSessionBalance
+        return estimate.calculatedCost / (estimate.calculatedTime / 1.hours.inWholeSeconds.toDouble()) / 100
+    }
+
+    private fun formatBalance(balance: Long) = "%.2f".format(balance / 100.0)
+
+    private fun formatTimeHHMM(time: Long): String {
+        // Normalize to 4 digits, e.g. 900 -> "0900"
+        val padded = time.toString().padStart(4, '0')
+        val hours = padded.take(2)
+        val minutes = padded.substring(2, 4)
+        return "$hours:$minutes"
     }
 
 }

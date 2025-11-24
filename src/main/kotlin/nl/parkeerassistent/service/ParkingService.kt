@@ -3,36 +3,29 @@ package nl.parkeerassistent.service
 import io.ktor.client.call.body
 import io.ktor.client.request.parameter
 import io.ktor.client.request.setBody
-import io.ktor.server.plugins.NotFoundException
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.request.receive
 import nl.parkeerassistent.Metrics
-import nl.parkeerassistent.client.CloudApi
-import nl.parkeerassistent.client.Session
-import nl.parkeerassistent.client.ensureData
-import nl.parkeerassistent.external.AddParking
-import nl.parkeerassistent.external.AddParkingSession
-import nl.parkeerassistent.external.ParkingOrder
+import nl.parkeerassistent.client.Api
+import nl.parkeerassistent.external.Paginated
 import nl.parkeerassistent.external.ParkingSession
-import nl.parkeerassistent.external.ParkingSessions
-import nl.parkeerassistent.external.StopParking
-import nl.parkeerassistent.external.StopParkingSession
+import nl.parkeerassistent.external.ParkingSessionRequest
+import nl.parkeerassistent.external.StopParkingRequest
 import nl.parkeerassistent.model.AddParkingRequest
 import nl.parkeerassistent.model.HistoryResponse
 import nl.parkeerassistent.model.Parking
 import nl.parkeerassistent.model.ParkingResponse
 import nl.parkeerassistent.model.Response
 import nl.parkeerassistent.util.DateUtil
-import nl.parkeerassistent.util.ServiceUtil
-import nl.parkeerassistent.util.json
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
-import java.time.Instant
-import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Date
 
 object ParkingService {
 
-    private val log = LoggerFactory.getLogger(ParkingService::class.java)
+    private val LOG = LoggerFactory.getLogger(ParkingService::class.java)
 
     enum class Method: ServiceMethod {
         Get,
@@ -48,127 +41,85 @@ object ParkingService {
         }
     }
 
-    suspend fun get(session: Session): ParkingResponse {
+    suspend fun get(call: ApplicationCall): ParkingResponse {
+        val parkingSessions = retrieveParkingSessions(call)
 
-        val active = getParkingSessions(session, ParkingSessionType.Active)
-        val scheduled = getParkingSessions(session, ParkingSessionType.Scheduled)
+        val active = parkingSessions.filter { it.status == "ACTIVE" }.map(this::convertParkingSession)
+        val scheduled = parkingSessions.filter { it.status == "FUTURE" }.map(this::convertParkingSession)
 
-        Metrics.logAndCount(session.call, Method.Get, Level.INFO, "SUCCESS")
+        Metrics.logAndCount(call, Method.Get, Level.INFO, "SUCCESS")
         return ParkingResponse(active, scheduled)
     }
 
-    private suspend fun getParkingSessions(session: Session, type: ParkingSessionType): List<Parking> {
-
-        val result = parkingSessions(session, type)
-
-        val parkingSessions = if (type != ParkingSessionType.Completed) {
-            result.sortedBy { ZonedDateTime.parse(it.startDate, DateUtil.gmtDateFormatter) }
-        } else {
-            result.sortedByDescending { ZonedDateTime.parse(it.startDate, DateUtil.gmtDateFormatter) }
+    private suspend fun retrieveParkingSessions(call: ApplicationCall): List<ParkingSession> {
+        val productId = call.request.cookies["product_id"] ?: throw Exception("product_id is required")
+        val response = Api.get(call, "/v1/ssp/parking_session/list") {
+            parameter("page", "1")
+            parameter("row_per_page", "100")
+            parameter("sort", "parking_session_id:desc")
+            parameter("filters[client_product_id]", productId)
         }
-
-        return parkingSessions.map {
-            Parking(it.psRightId, it.vehicleId, it.visitorName, convertTime(it.startDate), convertTime(it.endDate), it.parkingCost.value)
-        }
+        val parkingSessions = response.body<Paginated<ParkingSession>>().data
+        return parkingSessions
     }
 
-    enum class ParkingSessionType(val status: String) {
-        Active("Actief"),
-        Scheduled("Toekomstig"),
-        Completed("Voltooid")
-    }
+    private fun convertParkingSession(parkingSession: ParkingSession): Parking = Parking(
+        id = parkingSession.id,
+        license = parkingSession.vrn,
+        startTime = convertTime(parkingSession.startDate),
+        endTime = convertTime(parkingSession.endDate),
+        cost = parkingSession.cost / 100.0,
+    )
 
     private fun convertTime(gmt: String): String {
-        val date = DateUtil.gmtDateFormatter.parse(gmt)
+        val date = DateTimeFormatter.ISO_OFFSET_DATE_TIME.parse(gmt)
         return DateUtil.dateFormatter.format(date)
     }
 
-    suspend fun start(session: Session, request: AddParkingRequest): Response {
-        val reportCode = ensureData(session.permit?.reportCode, "report code")
-        val paymentZoneId = ensureData(session.permit?.paymentZoneId, "payment zone id")
+    suspend fun start(call: ApplicationCall): Response {
+        val request = call.receive<AddParkingRequest>()
 
         val calendar = Calendar.getInstance()
-        calendar.time = request.start?.let { start -> DateUtil.dateTime.parse(start) } ?: run { Date() }
+        calendar.time = request.start?.let { start -> DateUtil.dateTime.parse(start) } ?: Date()
         calendar.add(Calendar.SECOND, 1)
         val start = calendar.time
         calendar.add(Calendar.MINUTE, request.timeMinutes)
-        var end = calendar.time
+        val end = calendar.time
 
-        val regimeEnd = DateUtil.dateTime.parse(request.regimeTimeEnd)
-        if (end.after(regimeEnd)) {
-            end = regimeEnd
-        }
-
-        val parkingSession = AddParking(
-            AddParkingSession(
-                reportCode,
-                paymentZoneId,
-                request.visitor.license,
-                DateUtil.gmtDateFormatter.format(start.toInstant()),
-                DateUtil.gmtDateFormatter.format(end.toInstant())
-            ),
-            "nl"
+        val parkingSessionRequest = ParkingSessionRequest(
+            vrn = request.license,
+            startedAt = DateUtil.rfc1123Formatter.format(start.toInstant()),
+            endedAt = DateUtil.rfc1123Formatter.format(end.toInstant()),
+            clientProductId = request.productId,
+            zoneId = request.zoneId,
+            machineNumber = request.parkingMeterId,
+            isNewFavorite = true,
         )
-
-        log.json("parkingSession", parkingSession)
-
-        val result: ParkingOrder = CloudApi.post(session, "v1/orders") {
-            setBody(parkingSession)
-        }.body()
-
-        log.json("result", result)
-
-        val completed = CloudApi.waitForOrder(session, result.frontendId)
-
-        return ServiceUtil.convertResponse(session.call, Method.Start, completed)
-    }
-
-    suspend fun stop(session: Session): Response {
-        val parkingId = ensureData(session.call.parameters["id"]?.toLong(), "parking id")
-        val reportCode = ensureData(session.permit?.reportCode, "report code")
-
-        val original = findParkingSession(session, parkingId) ?: throw NotFoundException("Session not found")
-
-        val parkingSession = StopParking(
-            StopParkingSession(
-                reportCode,
-                parkingId,
-                original.startDate,
-                DateUtil.gmtDateFormatter.format(Instant.now())
-            )
-        )
-
-        val result: ParkingOrder = CloudApi.post(session, "v1/orders") {
-            setBody(parkingSession)
-        }.body()
-
-        val completed = CloudApi.waitForOrder(session, result.frontendId)
-
-        return ServiceUtil.convertResponse(session.call, Method.Stop, completed)
-    }
-
-    private suspend fun findParkingSession(session: Session, parkingId: Long): ParkingSession? {
-        val parkingSession = parkingSessions(session, ParkingSessionType.Active)
-            .find { p -> (p.psRightId == parkingId) }
-        return parkingSession ?: parkingSessions(session, ParkingSessionType.Scheduled)
-            .find { p -> (p.psRightId == parkingId) }
-    }
-
-    private suspend fun parkingSessions(session: Session, type: ParkingSessionType): List<ParkingSession> {
-        val response = CloudApi.get(session, "v2/parkingsessions") {
-            parameter("status", type.status)
-            parameter("itemsPerPage", 100)
-            parameter("page", 1)
+        Api.post(call, "/v1/ssp/parking_session/start") {
+            setBody(parkingSessionRequest)
         }
-        val result: ParkingSessions = response.body()
-        return result.parkingSession.filterNot { p -> p.isCancelled && p.parkingCost.value == 0.0 }
+        Metrics.logAndCount(call, Method.Start, Level.INFO, "SUCCESS")
+        return Response(true, "success")
     }
 
-    suspend fun history(session: Session): HistoryResponse {
-        val history = getParkingSessions(session, ParkingSessionType.Completed)
+    suspend fun stop(call: ApplicationCall): Response {
+        val id = call.parameters["id"] ?: throw Exception("id is required")
+        val newEndedAt = DateUtil.stopParkingFormatter.format(Date().toInstant())
+        val stopParkingRequest = StopParkingRequest(newEndedAt = newEndedAt)
+        Api.patch(call, "/v1/ssp/parking_session/${id}/edit") {
+            setBody(stopParkingRequest)
+        }
+        Metrics.logAndCount(call, Method.Stop, Level.INFO, "SUCCESS")
+        return Response(true, "success")
+    }
 
-        Metrics.logAndCount(session.call, Method.History, Level.INFO, "SUCCESS")
-        return HistoryResponse(history)
+    suspend fun history(call: ApplicationCall): HistoryResponse {
+        val parkingSessions = retrieveParkingSessions(call)
+
+        val completed = parkingSessions.filter { it.status == "COMPLETED" }.map(this::convertParkingSession)
+
+        Metrics.logAndCount(call, Method.History, Level.INFO, "SUCCESS")
+        return HistoryResponse(completed)
     }
 
 }

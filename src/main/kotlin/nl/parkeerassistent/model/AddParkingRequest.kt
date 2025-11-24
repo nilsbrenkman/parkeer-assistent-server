@@ -4,8 +4,10 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class AddParkingRequest(
-    val visitor: Visitor,
+    val license: String,
     val timeMinutes: Int,
     val start: String? = null,
-    val regimeTimeEnd: String
-) {}
+    val productId: Long,
+    val zoneId: Long,
+    val parkingMeterId: Long,
+)

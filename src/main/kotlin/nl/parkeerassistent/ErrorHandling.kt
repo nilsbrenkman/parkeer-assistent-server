@@ -11,7 +11,7 @@ import io.ktor.server.plugins.origin
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
 import io.ktor.server.response.respond
-import nl.parkeerassistent.util.ServiceUtil
+import nl.parkeerassistent.client.clearTokenCookie
 import org.slf4j.LoggerFactory
 
 private val LOG = LoggerFactory.getLogger("HTTP")
@@ -24,12 +24,12 @@ fun Application.configureErrorHandling() {
             proceed()
         } catch (e: RedirectResponseException) {
             LOG.warn("Not logged in [${e.message}]")
-            ServiceUtil.clearSessionCookie(call)
+            call.clearTokenCookie()
             call.respond(HttpStatusCode.Unauthorized, "Not authorized")
         } catch (e: ClientRequestException) {
             if (e.response.status == HttpStatusCode.Unauthorized) {
                 LOG.warn("Not logged in")
-                ServiceUtil.clearSessionCookie(call)
+                call.clearTokenCookie()
                 call.respond(HttpStatusCode.Unauthorized, "Not authorized")
             } else {
                 LOG.warn("Client error", e)

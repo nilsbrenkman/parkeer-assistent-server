@@ -3,7 +3,7 @@ package nl.parkeerassistent.external
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class Cost(
-    val currency: String,
-    val value: Double
+data class TimeFrameData(
+    val startTime: Long? = null,
+    val endTime: Long? = null,
 )
