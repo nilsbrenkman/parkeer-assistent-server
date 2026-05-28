@@ -22,13 +22,10 @@ import nl.parkeerassistent.model.RegimeResponse
 import nl.parkeerassistent.model.UserResponse
 import nl.parkeerassistent.util.DateUtil
 import nl.parkeerassistent.util.DayOfWeek
-import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
 import kotlin.time.Duration.Companion.hours
 
 object UserService {
-
-    private val LOG = LoggerFactory.getLogger(UserService::class.java)
 
     enum class Method : ServiceMethod {
         Get,
@@ -99,10 +96,10 @@ object UserService {
     private suspend fun getProduct(call: ApplicationCall): Product? {
         val response = Api.get(call, "/v1/permit_overview/product_list") {
             parameter("page", "1")
-            parameter("row_per_page", "50")
+            parameter("row_per_page", "100")
         }
         val products = response.body<Paginated<Product>>().data
-        return products.firstOrNull { it.status == "ACTIVE" && it.permitType == "visitor" }
+        return products.firstOrNull { it.status == "ACTIVE" && (it.permitType == "visitor" || it.permitType == "scratch") }
     }
 
     private suspend fun getClientProduct(call: ApplicationCall, id: Long): ClientProduct {
@@ -120,7 +117,7 @@ object UserService {
             setBody(request)
         }
         val parkingZone = response.body<ParkingZoneResponse>()
-        val zoneDays = parkingZone.zone.timeFrameDate
+        val zoneDays = parkingZone.zone.timeFrameData
         val regimeDays = mutableListOf<RegimeDay>()
         DayOfWeek.entries.forEach { day ->
             val zoneDay = zoneDays[day.ordinal]
@@ -128,28 +125,41 @@ object UserService {
                 regimeDays.add(RegimeDay(
                     weekday = day.name,
                     startTime = formatTimeHHMM(zoneTime.startTime ?: 0),
-                    endTime = formatTimeHHMM(zoneTime.endTime ?: 2359),
+                    endTime = formatTimeHHMM(getEndTime(zoneTime.endTime)),
                 ))
             }
         }
         return parkingZone.zone.zoneId to Regime(regimeDays)
     }
 
+    fun getEndTime(endTime: Long?): Long {
+        if (endTime == null || endTime == 2400L) return 2359
+        return endTime
+    }
+
     private suspend fun getHourRate(call: ApplicationCall, productId: Long, parkingMeterId: Long, regime: Regime): Double {
         val regimeDay = regime.days.first()
-        val startTime = DateUtil.nextDayOfWeekAt(regimeDay.weekday, regimeDay.startTime)
-        val endTime = startTime.plusHours(1)
-        val request = CostEstimateRequest(
-            productId = productId,
-            startedAt = DateUtil.rfc1123Formatter.format(startTime.toInstant()),
-            endedAt = DateUtil.rfc1123Formatter.format(endTime.toInstant()),
-            parkingMeterId = parkingMeterId,
-        )
-        val response = Api.post(call, "/v1/ssp/parking_session/cost_calculator") {
-            setBody(request)
-        }
-        val estimate = response.body<CostEstimateResponse>().parkingSessionBalance
-        return estimate.calculatedCost / (estimate.calculatedTime / 1.hours.inWholeSeconds.toDouble()) / 100
+        var startTime = DateUtil.nextDayOfWeekAt(regimeDay.weekday, regimeDay.startTime)
+        var retry = 0
+        do {
+            val endTime = startTime.plusHours(1)
+            val request = CostEstimateRequest(
+                productId = productId,
+                startedAt = DateUtil.rfc1123Formatter.format(startTime.toInstant()),
+                endedAt = DateUtil.rfc1123Formatter.format(endTime.toInstant()),
+                parkingMeterId = parkingMeterId,
+            )
+            val response = Api.post(call, "/v1/ssp/parking_session/cost_calculator") {
+                setBody(request)
+            }
+            val estimate = response.body<CostEstimateResponse>().parkingSessionBalance
+            if (estimate.calculatedCost > 0L) {
+                return estimate.calculatedCost / (estimate.calculatedTime / 1.hours.inWholeSeconds.toDouble()) / 100
+            }
+            startTime = startTime.plusWeeks(1)
+            retry++
+        } while (retry < 3)
+        return 0.0
     }
 
     private fun formatBalance(balance: Long) = "%.2f".format(balance / 100.0)

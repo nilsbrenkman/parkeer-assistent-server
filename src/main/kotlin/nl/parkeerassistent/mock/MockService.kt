@@ -3,6 +3,7 @@ package nl.parkeerassistent.mock
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.plugins.MissingRequestParameterException
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -13,14 +14,10 @@ import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
-import nl.parkeerassistent.client.ensureData
 import nl.parkeerassistent.model.AddParkingRequest
 import nl.parkeerassistent.model.AddVisitorRequest
 import nl.parkeerassistent.model.BalanceResponse
-import nl.parkeerassistent.model.CompleteRequest
 import nl.parkeerassistent.model.HistoryResponse
-import nl.parkeerassistent.model.IdealResponse
-import nl.parkeerassistent.model.Issuer
 import nl.parkeerassistent.model.LoginRequest
 import nl.parkeerassistent.model.ParkingResponse
 import nl.parkeerassistent.model.PaymentRequest
@@ -42,7 +39,8 @@ fun Route.mockRouting() {
             MockStateContainer.reset()
         } else {
             call.response.status(HttpStatusCode.Unauthorized)
-            throw NoPermissionException()
+            call.respond(Response(false, "Wrong username or password"))
+            return@post
         }
         call.respond(Response(MockStateContainer.mock().user.loggedIn, ""))
     }
@@ -89,7 +87,7 @@ fun Route.mockRouting() {
             call.respond(Response(true, ""))
         }
         delete("/{id}") {
-            val id = ensureData(call.parameters["id"]?.toLong(), "parking id")
+            val id = call.parameters["id"]?.toLong() ?: throw MissingRequestParameterException("id is required")
             preCheck(call)
 
             MockStateContainer.mock().stopParking(id)
@@ -112,7 +110,7 @@ fun Route.mockRouting() {
             call.respond(Response(true, ""))
         }
         delete("/{id}") {
-            val id = ensureData(call.parameters["id"]?.toLong(), "visitor id")
+            val id = call.parameters["id"]?.toLong() ?: throw MissingRequestParameterException("id is required")
             preCheck(call)
 
             MockStateContainer.mock().deleteVisitor(id)
@@ -120,35 +118,11 @@ fun Route.mockRouting() {
         }
     }
     route("/payment") {
-        get {
-            preCheck(call)
-            call.respond(
-                IdealResponse(
-                    listOf("5,00", "10,00", "15,00", "20,00", "30,00", "40,00", "50,00", "100,00"),
-                    listOf(
-                        Issuer("SUCCESS", "Success"),
-                        Issuer("PENDING", "Pending"),
-                        Issuer("PENDING10", "Pending 10s"),
-                        Issuer("ERROR", "Error"))
-                )
-            )
-        }
         post {
             val request = call.receive<PaymentRequest>()
             preCheck(call)
 
             call.respond(MockStateContainer.mock().startPayment(request))
-        }
-        post("/complete") {
-            val request = call.receive<CompleteRequest>()
-            preCheck(call)
-            val status = MockStateContainer.mock().checkPayment(request.transactionId)
-            call.respond(Response(status.status == "success", ""))
-        }
-        get("/{id}") {
-            val id = ensureData(call.parameters["id"], "payment id")
-            preCheck(call)
-            call.respond(MockStateContainer.mock().checkPayment(id))
         }
     }
 }

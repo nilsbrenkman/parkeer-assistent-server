@@ -18,15 +18,6 @@ import nl.parkeerassistent.route.visitorRoutes
 
 fun Application.configureRouting() {
     routing {
-//        get("/version/{version}") {
-//            nl.parkeerassistent.service.VersionService.version(call)
-//        }
-//        get("/completeMockPayment") {
-//            call.respondHtml(HttpStatusCode.OK, kotlinx.html.HTML::completeMockPayment)
-//        }
-//        get("/feedback") {
-//            call.respondHtml(HttpStatusCode.OK, kotlinx.html.HTML::feedback)
-//        }
         mock {
             mockRouting()
         }

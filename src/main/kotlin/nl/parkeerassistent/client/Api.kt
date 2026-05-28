@@ -19,11 +19,8 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.util.date.GMTDate
 import kotlinx.coroutines.Dispatchers
 import nl.parkeerassistent.JSON
-import org.slf4j.LoggerFactory
 
 object Api {
-
-    private val LOG = LoggerFactory.getLogger("Api")
 
     suspend fun get(call: ApplicationCall, url: String, block: HttpRequestBuilder.() -> Unit = {}): HttpResponse {
         return client.get(getUrl(url)) {

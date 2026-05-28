@@ -42,7 +42,6 @@ object Metrics {
 
         val os = call.request.headers["X-ParkeerAssistent-OS"] ?: "null"
         val sdk = call.request.headers["X-ParkeerAssistent-SDK"] ?: "null"
-        val userId = (if (os == "Web") call.request.cookies["userid"] else call.request.headers["X-ParkeerAssistent-UserId"]) ?: "null"
         val version = call.request.headers["X-ParkeerAssistent-Version"] ?: "null"
         val build = call.request.headers["X-ParkeerAssistent-Build"] ?: "0"
 
@@ -50,7 +49,6 @@ object Metrics {
             "parkeerassistent_device_data", Tags.of(
                 Tag.of("os", os),
                 Tag.of("sdk", sdk),
-                Tag.of("user_id", userId),
                 Tag.of("version", version),
                 Tag.of("build", build),
             )

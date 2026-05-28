@@ -4,6 +4,5 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class PaymentResponse(
-    val redirectUrl: String,
-    val transactionId: String
+    val url: String,
 )

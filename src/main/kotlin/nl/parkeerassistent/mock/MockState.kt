@@ -57,7 +57,7 @@ class MockState {
         log.info("Creating MockState")
         user = User(false)
 
-        startPayment(PaymentRequest("25,00", "SUCCESS"))
+        startPayment(PaymentRequest(2500, "SUCCESS", "NL"))
 
         visitorList = mutableListOf(
             Visitor(idGenerator.getId(), "111-AA-1", "Suzanne"),
@@ -112,11 +112,11 @@ class MockState {
 
     fun startPayment(request: PaymentRequest): PaymentResponse {
         val uuid = UUID.randomUUID().toString()
-        val amount = request.amount.replace(",", ".").toDouble()
-        val payment = Payment(uuid, request.issuerId, amount, Instant.now())
+        val amount = request.amount.toDouble() / 100
+        val payment = Payment(uuid, request.brand, amount, Instant.now())
         paymentList[uuid] = payment
 
-        return PaymentResponse("https://parkeerassistent.nl/completeMockPayment?id=$uuid", uuid)
+        return PaymentResponse("https://parkeerassistent.nl/completeMockPayment?id=$uuid")
     }
 
     fun checkPayment(transactionId: String): StatusResponse {

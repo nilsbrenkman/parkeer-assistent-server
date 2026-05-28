@@ -7,6 +7,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
+import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.origin
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
@@ -35,6 +36,9 @@ fun Application.configureErrorHandling() {
                 LOG.warn("Client error", e)
                 call.respond(e.response.status, "Client error")
             }
+        } catch (e: BadRequestException) {
+            LOG.warn("Bad request", e)
+            call.respond(HttpStatusCode.BadRequest, e.message ?: "Bad request")
         } catch (e: ServerResponseException) {
             LOG.warn("Server error", e)
             call.respond(e.response.status, "Server error")
