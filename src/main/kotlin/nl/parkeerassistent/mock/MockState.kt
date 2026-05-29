@@ -1,73 +1,61 @@
 package nl.parkeerassistent.mock
 
+import kotlinx.serialization.Serializable
 import nl.parkeerassistent.model.AddParkingRequest
 import nl.parkeerassistent.model.Parking
 import nl.parkeerassistent.model.PaymentRequest
 import nl.parkeerassistent.model.PaymentResponse
 import nl.parkeerassistent.model.Regime
 import nl.parkeerassistent.model.RegimeDay
-import nl.parkeerassistent.model.StatusResponse
 import nl.parkeerassistent.model.Visitor
 import nl.parkeerassistent.util.DateUtil
-import org.slf4j.LoggerFactory
-import java.text.SimpleDateFormat
-import java.time.Instant
-import java.time.temporal.ChronoUnit
+import nl.parkeerassistent.util.LicenseUtil
 import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicLong
 
-class MockState {
+@Serializable
+class MockState(
+    private var idCounter: Long = 0,
+    private val visitors: MutableList<MockVisitor> = mutableListOf(),
+    private val parkings: MutableList<MockParking> = mutableListOf(),
+    private val payments: MutableList<MockPayment> = mutableListOf(),
+) {
 
-    companion object {
-        private val log = LoggerFactory.getLogger(MockState::class.java)
+    val balance: Double
+        get() = payments.sumOf { it.balance } - parkings.sumOf { it.cost() }
 
-        val hourRate = 2.1
+    val visitorList: List<Visitor>
+        get() = visitors.map(MockVisitor::toModel)
+
+    val active: List<Parking>
+        get() = parkings
+            .filter { Date(it.start).before(Date()) && Date(it.end).after(Date()) }
+            .sortedBy { it.start }
+            .map(MockParking::toModel)
+
+    val scheduled: List<Parking>
+        get() = parkings
+            .filter { Date(it.start).after(Date()) }
+            .sortedBy { it.start }
+            .map(MockParking::toModel)
+
+    val history: List<Parking>
+        get() = parkings
+            .filter { Date(it.end).before(Date()) }
+            .sortedByDescending { it.start }
+            .map(MockParking::toModel)
+
+    private fun nextId(): Long = idCounter++
+
+    fun addVisitor(name: String, license: String): MockVisitor {
+        val visitor = MockVisitor(nextId(), license, name)
+        visitors.add(visitor)
+        return visitor
     }
 
-    val idGenerator = IdGenerator()
-
-    val expiresAt = Instant.now().plus(15, ChronoUnit.MINUTES)
-
-    var user: User
-    val balance get() = paymentList.values.sumOf(Payment::balance) - parkingList.sumOf(Parking::cost)
-
-    private var visitorList: MutableList<Visitor>
-    val visitors get() = visitorList.map(Visitor::convert)
-
-    private var parkingList: MutableList<Parking>
-    val active get() = parkingList
-        .filter { p -> p.start.before(Date()) && p.end.after(Date()) }
-        .sortedBy { p -> p.start }
-        .map(Parking::convert)
-    val scheduled get() = parkingList
-        .filter { p -> p.start.after(Date()) }
-        .sortedBy { p -> p.start }
-        .map(Parking::convert)
-    val history get() = parkingList
-        .filter { p -> p.end.before(Date()) }
-        .sortedByDescending { p -> p.start }
-        .map(Parking::convert)
-
-    private var paymentList: MutableMap<String, Payment> = HashMap()
-
-    init {
-        log.info("Creating MockState")
-        user = User(false)
-
-        startPayment(PaymentRequest(2500, "SUCCESS", "NL"))
-
-        visitorList = mutableListOf(
-            Visitor(idGenerator.getId(), "111-AA-1", "Suzanne"),
-            Visitor(idGenerator.getId(), "22-BBB-2", "Erik"),
-        )
-        parkingList = mutableListOf()
-
-        startParking(AddParkingRequest(visitorList[0].license, 15, Date().addingMinutes(-14), 1, 2, 55105))
-        startParking(AddParkingRequest(visitorList[1].license, 60, Date().addingMinutes(2), 1, 2, 55105))
-        startParking(AddParkingRequest(visitorList[0].license, 60, Date().addingMinutes(-2 * 60), 1, 2, 55105))
+    fun deleteVisitor(id: Long) {
+        visitors.removeIf { it.id == id }
     }
 
     fun startParking(request: AddParkingRequest) {
@@ -78,53 +66,36 @@ class MockState {
         calendar.add(Calendar.MINUTE, request.timeMinutes)
         val end = calendar.time
 
-        val parking = Parking(
-            idGenerator.getId(),
-            request.license,
-            "",
-            start,
-            end
-        )
+        val parking = MockParking(nextId(), request.license, null, start.time, end.time)
         if (parking.cost() <= balance) {
-            parkingList.add(parking)
+            parkings.add(parking)
         }
     }
 
     fun stopParking(id: Long) {
-        val parking = parkingList.find { p -> p.id == id }
-
-        if (parking == null) {
+        val index = parkings.indexOfFirst { it.id == id }
+        if (index < 0) {
             return
         }
-        parking.end = Date()
-        if (parking.end < parking.start) {
-            parkingList.remove(parking)
+        val parking = parkings[index]
+        val now = Date().time
+        if (now < parking.start) {
+            parkings.removeAt(index)
+        } else {
+            parkings[index] = parking.copy(end = now)
         }
-    }
-
-    fun addVisitor(name: String, license: String) {
-        visitorList.add(Visitor(idGenerator.getId(), license, name))
-    }
-
-    fun deleteVisitor(id: Long) {
-        visitorList.removeIf { visitor -> visitor.id == id }
     }
 
     fun startPayment(request: PaymentRequest): PaymentResponse {
         val uuid = UUID.randomUUID().toString()
         val amount = request.amount.toDouble() / 100
-        val payment = Payment(uuid, request.brand, amount, Instant.now())
-        paymentList[uuid] = payment
+        payments.add(MockPayment(uuid, request.brand, amount, System.currentTimeMillis()))
 
         return PaymentResponse("https://parkeerassistent.nl/completeMockPayment?id=$uuid")
     }
 
-    fun checkPayment(transactionId: String): StatusResponse {
-        val payment = paymentList[transactionId] ?: return StatusResponse("error")
-        return StatusResponse(payment.status)
-    }
-
-    class User(var loggedIn: Boolean) {
+    companion object {
+        const val HOUR_RATE = 2.1
 
         val regime = Regime(
             listOf(
@@ -137,83 +108,71 @@ class MockState {
             )
         )
 
-        val regimeStart get() = regimeForDate(Date()).first
-        val regimeEnd get() = regimeForDate(Date()).second
+        fun dummy(): MockState {
+            val state = MockState()
+            state.startPayment(PaymentRequest(2500, "SUCCESS", "NL"))
 
-        fun regimeForDate(date: Date): Pair<String, String> {
-            val sdf = SimpleDateFormat("E", Locale.ENGLISH)
-            val weekday = sdf.format(date).uppercase()
+            val suzanne = state.addVisitor("Suzanne", "111-AA-1")
+            val erik = state.addVisitor("Erik", "22-BBB-2")
 
-            val regimeDay = regime.days.find { day -> day.weekday == weekday }
-            val startTime = regimeDay?.startTime ?: "00:00"
-            val endTime = regimeDay?.endTime ?: "00:00"
-
-            val startDate = DateUtil.dateWithTime(date, startTime)
-            val endDate = DateUtil.dateWithTime(date, endTime)
-
-            return startDate to endDate
-        }
-
-    }
-
-    class Visitor(val id: Long,
-                  val license: String,
-                  val name: String?) {
-
-        fun convert(): nl.parkeerassistent.model.Visitor {
-            return Visitor(id, license, license, name)
+            state.startParking(AddParkingRequest(suzanne.license, 15, Date().addingMinutes(-14), 1, 2, 55105))
+            state.startParking(AddParkingRequest(erik.license, 60, Date().addingMinutes(2), 1, 2, 55105))
+            state.startParking(AddParkingRequest(suzanne.license, 60, Date().addingMinutes(-2 * 60), 1, 2, 55105))
+            return state
         }
     }
+}
 
-    class Parking(
-        val id: Long,
-        val license: String,
-        val name: String?,
-        var start: Date,
-        var end: Date
-    ) {
+@Serializable
+data class MockVisitor(
+    val id: Long,
+    val license: String,
+    val name: String? = null,
+) {
+    fun toModel(): Visitor = Visitor(id, license, LicenseUtil.format(license), name)
+}
 
-        fun cost(): Double {
-            val diffInHours = (end.time - start.time) / 1_000 / 60.0 / 60.0
-            return "%.2f".format(diffInHours * hourRate).toDouble()
-        }
-
-        fun convert(): nl.parkeerassistent.model.Parking {
-            return Parking(
-                id, license, name, DateUtil.dateTime.format(start), DateUtil.dateTime.format(end), cost()
-            )
-        }
+@Serializable
+data class MockParking(
+    val id: Long,
+    val license: String,
+    val name: String? = null,
+    val start: Long,
+    val end: Long,
+) {
+    fun cost(): Double {
+        val diffInHours = (end - start) / 1_000 / 60.0 / 60.0
+        return "%.2f".format(diffInHours * MockState.HOUR_RATE).toDouble()
     }
 
-    data class Payment(val id: String, val issuer: String, val amount: Double, val createdAt: Instant) {
-        val status: String
-            get() {
-                return when (issuer) {
-                    "SUCCESS" -> "success"
-                    "PENDING" -> "pending"
-                    "PENDING10" -> {
-                        if (Instant.now() > createdAt.plusSeconds(10)) {
-                            return "success"
-                        }
-                        return "pending"
-                    }
-                    "ERROR" -> "pending"
-                    else -> "unknown"
-                }
-            }
-        val balance: Double
-            get() {
-                return if (status == "success") amount else 0.0
-            }
-    }
+    fun toModel(): Parking = Parking(
+        id = id,
+        license = license,
+        name = name,
+        startTime = DateUtil.dateTime.format(Date(start)),
+        endTime = DateUtil.dateTime.format(Date(end)),
+        cost = cost(),
+    )
+}
 
-    class IdGenerator {
-        private var counter = AtomicLong(0)
-        fun getId(): Long {
-            return counter.getAndAdd(1)
+@Serializable
+data class MockPayment(
+    val id: String,
+    val issuer: String,
+    val amount: Double,
+    val createdAt: Long,
+) {
+    val status: String
+        get() = when (issuer) {
+            "SUCCESS" -> "success"
+            "PENDING" -> "pending"
+            "PENDING10" -> if (System.currentTimeMillis() > createdAt + 10_000) "success" else "pending"
+            "ERROR" -> "pending"
+            else -> "unknown"
         }
-    }
 
+    val balance: Double
+        get() = if (status == "success") amount else 0.0
 }
 
 fun Date.addingMinutes(minutes: Int): String {

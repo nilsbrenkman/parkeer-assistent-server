@@ -48,8 +48,6 @@ object LoginService {
     suspend fun login(call: ApplicationCall) {
         if (call.request.cookies["token"] != null) {
             Metrics.logAndCount(call, Method.Login, Level.WARN, "TOKEN_ALREADY_EXISTS")
-            call.respond(Response(false, "Je bent al ingelogd"))
-            return
         }
         val request = call.receive<LoginRequest>()
         val response = Api.post(call, "/ssp/login_check") {
