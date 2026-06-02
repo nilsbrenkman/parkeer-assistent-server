@@ -16,13 +16,32 @@ import nl.parkeerassistent.util.LicenseUtil
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
 
+/**
+ * Service responsible for the user's saved visitors (favorite license plates).
+ *
+ * Visitors are stored upstream as "favorite VRNs" (Vehicle Registration
+ * Numbers). This service lists, adds and deletes them, normalizing license
+ * plates on the way in via [LicenseUtil.normalise] and formatting them for
+ * display via [LicenseUtil.format] on the way out. All operations delegate to
+ * the upstream SSP (Self-Service Portal) API through [Api] and emit metrics
+ * via [Metrics].
+ */
 object VisitorService {
 
     private val LOG = LoggerFactory.getLogger(VisitorService::class.java)
 
+    /**
+     * Enumeration of service methods exposed by [VisitorService].
+     *
+     * Used by [Metrics] to tag log entries and counters with a consistent
+     * service/method pair.
+     */
     enum class Method: ServiceMethod {
+        /** List the saved visitors. */
         Get,
+        /** Add a new saved visitor. */
         Add,
+        /** Delete a saved visitor. */
         Delete,
         ;
         override fun service(): String {
@@ -33,6 +52,15 @@ object VisitorService {
         }
     }
 
+    /**
+     * Retrieves the user's saved visitors.
+     *
+     * Each upstream favorite VRN is mapped to a [Visitor], exposing both the
+     * raw license plate and a display-formatted variant.
+     *
+     * @param call the incoming Ktor application call.
+     * @return a [VisitorResponse] containing the saved visitors.
+     */
     suspend fun get(call: ApplicationCall): VisitorResponse {
         val response = Api.get(call, "/v1/ssp/favorite_vrn/list")
         val vrnList = response.body<ListVrns>().vrns
@@ -48,6 +76,17 @@ object VisitorService {
         })
     }
 
+    /**
+     * Adds a new saved visitor.
+     *
+     * The request body is parsed as an [AddVisitorRequest]; the license plate
+     * is normalized via [LicenseUtil.normalise] before being stored upstream
+     * as a favorite VRN with the given name as its description.
+     *
+     * @param call the incoming Ktor application call carrying the
+     *             [AddVisitorRequest] body.
+     * @return a successful [Response] when the upstream call completes.
+     */
     suspend fun add(call: ApplicationCall): Response {
         val request = call.receive<AddVisitorRequest>()
         val vrn = Vrn(
@@ -61,6 +100,17 @@ object VisitorService {
         return Response(true, "success")
     }
 
+    /**
+     * Deletes a saved visitor.
+     *
+     * The visitor identifier is read from the `id` path/query parameter of the
+     * [call].
+     *
+     * @param call the incoming Ktor application call; the `id` parameter must
+     *             be present.
+     * @return a successful [Response] when the upstream call completes.
+     * @throws Exception if the `id` parameter is missing.
+     */
     suspend fun delete(call: ApplicationCall): Response {
         val id = call.parameters["id"]?.toLong() ?: throw Exception("id is required")
         Api.delete(call, "/v1/ssp/favorite_vrn/$id/delete")

@@ -15,6 +15,7 @@ import nl.parkeerassistent.route.parkingRoutes
 import nl.parkeerassistent.route.paymentRoutes
 import nl.parkeerassistent.route.userRoutes
 import nl.parkeerassistent.route.visitorRoutes
+import nl.parkeerassistent.util.requireTokenCookie
 
 fun Application.configureRouting() {
     routing {
@@ -23,11 +24,13 @@ fun Application.configureRouting() {
         }
         rateLimit {
             loginRoutes()
-            userRoutes()
-            parkingRoutes()
-            visitorRoutes()
-            paymentRoutes()
-            geoRoutes()
+            requireTokenCookie {
+                userRoutes()
+                parkingRoutes()
+                visitorRoutes()
+                paymentRoutes()
+                geoRoutes()
+            }
         }
         post("/") {
             call.respondRedirect("/", false)

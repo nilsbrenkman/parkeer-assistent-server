@@ -112,8 +112,8 @@ class MockState(
             val state = MockState()
             state.startPayment(PaymentRequest(2500, "SUCCESS", "NL"))
 
-            val suzanne = state.addVisitor("Suzanne", "111-AA-1")
-            val erik = state.addVisitor("Erik", "22-BBB-2")
+            val suzanne = state.addVisitor("Suzanne", "111AA1")
+            val erik = state.addVisitor("Erik", "22BBB2")
 
             state.startParking(AddParkingRequest(suzanne.license, 15, Date().addingMinutes(-14), 1, 2, 55105))
             state.startParking(AddParkingRequest(erik.license, 60, Date().addingMinutes(2), 1, 2, 55105))

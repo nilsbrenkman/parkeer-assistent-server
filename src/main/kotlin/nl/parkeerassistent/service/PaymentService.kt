@@ -10,9 +10,23 @@ import nl.parkeerassistent.model.PaymentRequest
 import nl.parkeerassistent.model.PaymentResponse
 import org.slf4j.event.Level
 
+/**
+ * Service responsible for topping up the user's parking wallet.
+ *
+ * Forwards a wallet top-up request to the upstream SSP (Self-Service Portal)
+ * API through [Api] and returns the resulting transaction details (typically a
+ * redirect/URL to complete payment). Emits metrics via [Metrics].
+ */
 object PaymentService {
 
+    /**
+     * Enumeration of service methods exposed by [PaymentService].
+     *
+     * Used by [Metrics] to tag log entries and counters with a consistent
+     * service/method pair.
+     */
     enum class Method : ServiceMethod {
+        /** Initiate a wallet top-up transaction. */
         Payment,
         ;
 
@@ -25,6 +39,18 @@ object PaymentService {
         }
     }
 
+    /**
+     * Initiates a wallet top-up transaction.
+     *
+     * The request body is parsed as a [PaymentRequest] and forwarded to the
+     * upstream `wallet_transaction/new` endpoint. Any upstream status above
+     * `299` is treated as a failure.
+     *
+     * @param call the incoming Ktor application call carrying the
+     *             [PaymentRequest] body.
+     * @return the [PaymentResponse] returned by the upstream API.
+     * @throws Exception if the upstream call returns a non-success status.
+     */
     suspend fun payment(call: ApplicationCall): PaymentResponse {
         val request = call.receive<PaymentRequest>()
         val response = Api.post(call, "/v1/ssp/wallet_transaction/new") {

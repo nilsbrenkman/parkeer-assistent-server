@@ -13,6 +13,7 @@ import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
 import io.ktor.server.response.respond
 import nl.parkeerassistent.client.clearTokenCookie
+import nl.parkeerassistent.util.NoTokenCookieException
 import org.slf4j.LoggerFactory
 
 private val LOG = LoggerFactory.getLogger("HTTP")
@@ -21,8 +22,14 @@ fun Application.configureErrorHandling() {
 
     intercept(ApplicationCallPipeline.Monitoring) {
         try {
-            LOG.info("Request: ${call.request.httpMethod.value} ${call.request.uri} from ${call.request.origin.remoteHost}")
+            if (call.request.uri != "/metrics") {
+                LOG.info("Request: ${call.request.httpMethod.value} ${call.request.uri} from ${call.request.origin.remoteHost}")
+            }
             proceed()
+        } catch (e: NoTokenCookieException) {
+            LOG.warn("No token cookie for ip: ${call.request.origin.remoteHost}", e)
+            call.clearTokenCookie()
+            call.respond(HttpStatusCode.Unauthorized, "Not authorized")
         } catch (e: RedirectResponseException) {
             LOG.warn("Not logged in [${e.message}]")
             call.clearTokenCookie()
