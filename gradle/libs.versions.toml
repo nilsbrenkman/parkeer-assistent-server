@@ -1,7 +1,7 @@
 [versions]
 jsoup = "1.21.2"
 kotlin = "2.2.21"
-ktor = "3.3.2"
+ktor = "3.5.0"
 logback = "1.5.20"
 prometheus = "1.16.0"
 ratelimiting = "2.2.1"
