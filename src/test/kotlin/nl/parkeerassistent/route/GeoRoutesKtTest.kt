@@ -1,5 +1,6 @@
 package nl.parkeerassistent.route
 
+import io.ktor.client.request.cookie
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.server.testing.testApplication
@@ -21,6 +22,7 @@ class GeoRoutesKtTest {
                 parameters.append("lat", "52.3536628")
                 parameters.append("lon", "4.92935411")
             }
+            cookie("token", "XXX")
         }
         assert(response.status.value == 200)
         val body = response.bodyAsText()
