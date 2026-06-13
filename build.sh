@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-TAG="3.1.8"
+TAG="3.1.9"
 
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
