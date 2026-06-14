@@ -5,42 +5,27 @@
 
 version: 2
 updates:
-  - package-ecosystem: "gradle" # See documentation for possible values
-    directory: "/" # Location of package manifests
-    schedule:
-      interval: "weekly"
-    groups:
-      gradle-minor-patch:
-        applies-to: version-updates
-        update-types:
-          - "minor"
-          - "patch"
-      gradle-major:
-        applies-to: version-updates
-        update-types:
-          - "major"
+- package-ecosystem: "gradle" # See documentation for possible values
+  directory: "/" # Location of package manifests
+  schedule:
+    interval: "weekly"
+  groups:
+    gradle-minor-patch:
+      applies-to: version-updates
+      update-types:
+      - "minor"
+      - "patch"
+    gradle-major:
+      applies-to: version-updates
+      update-types:
+      - "major"
 
-  - package-ecosystem: "npm"
-    directory: "/web"
-    schedule:
-      interval: "weekly"
-    groups:
-      npm-minor-patch:
-        applies-to: version-updates
-        update-types:
-          - "minor"
-          - "patch"
-      npm-major:
-        applies-to: version-updates
-        update-types:
-          - "major"
-
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    groups:
-      github-actions:
-        applies-to: version-updates
-        patterns:
-          - "*"
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+  groups:
+    github-actions:
+      applies-to: version-updates
+      patterns:
+      - "*"

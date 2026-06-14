@@ -21,7 +21,7 @@ Build/run/test use the Gradle wrapper (`./gradlew`). JDK 21, Kotlin 2.2.
 
 `build.gradle.kts` injects every `KEY=VALUE` line from `.env` into the environment of any `JavaExec` task (`run`, `test`). `PORT` is **required** — `main()` calls `System.getenv("PORT").toInt()` and will crash if it is unset, so keep `.env` populated for local runs.
 
-The `web/` directory is a **separate** React 19 + Vite + TypeScript frontend with its own tooling (`cd web && npm install`, `npm run dev`, `npm run build`, `npm run lint`). It is not bundled into the server. The server's own bundled UI is the vanilla-JS app under `src/main/resources/static/`.
+The server ships its own UI: the vanilla-JS app under `src/main/resources/static/`. (The separate React/Vite frontend that used to live in `server/web/` has been moved out to the workspace-root `web/` component — see the root `CLAUDE.md`.)
 
 ## Architecture
 
