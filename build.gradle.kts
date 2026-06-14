@@ -35,7 +35,7 @@ dependencies {
     implementation(libs.logback)
     implementation(libs.micrometer.registry.prometheus)
 
-    testImplementation("io.ktor:ktor-server-test-host-jvm:3.3.2")
+    testImplementation("io.ktor:ktor-server-test-host-jvm:3.5.0")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.junit.jupiter:junit-jupiter:5.14.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
