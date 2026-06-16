@@ -3,6 +3,7 @@ package nl.parkeerassistent
 import io.ktor.server.application.Application
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import nl.parkeerassistent.service.GeoService
 import org.slf4j.LoggerFactory
 
 fun main() {
@@ -21,4 +22,6 @@ fun Application.module() {
     configureErrorHandling()
     configureMetrics()
     configureRouting()
+
+    GeoService.load()
 }
