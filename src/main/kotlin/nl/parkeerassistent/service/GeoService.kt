@@ -140,6 +140,9 @@ object GeoService {
         return parkingMeter.copy(distance = 0.0)
     }
 
+    fun load() {
+        LOG.info("Loading parking meters: ${parkingMeters.size}")
+    }
 }
 
 /**
