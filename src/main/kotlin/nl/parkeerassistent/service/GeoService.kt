@@ -1,5 +1,7 @@
 package nl.parkeerassistent.service
 
+import io.ktor.server.plugins.NotFoundException
+import io.ktor.server.routing.RoutingCall
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -130,6 +132,12 @@ object GeoService {
         val dx = a.x - b.x
         val dy = a.y - b.y
         return dx * dx + dy * dy
+    }
+
+    fun details(call: RoutingCall): ParkingMeter {
+        val id = call.parameters["id"]?.toInt() ?: throw Exception("id is required")
+        val parkingMeter = parkingMeters.firstOrNull { it.id == id } ?: throw NotFoundException("parking meter not found")
+        return parkingMeter.copy(distance = 0.0)
     }
 
 }
