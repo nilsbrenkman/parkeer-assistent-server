@@ -4,7 +4,7 @@ package nl.parkeerassistent.util
 object LicenseUtil {
 
     fun normalise(license: String): String {
-        val normalised = license.replace("![0-9a-zA-z]".toRegex(), "").replace("-", "")
+        val normalised = license.replace("[^0-9a-zA-Z]".toRegex(), "")
         return normalised.uppercase()
     }
 

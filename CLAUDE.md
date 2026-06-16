@@ -64,3 +64,14 @@ The server is otherwise stateless. Two httpOnly cookies carry session context be
 ### Geo
 
 `GeoService` lazily loads `src/main/resources/parkeerautomaten.json` (Amsterdam parking-meter GeoJSON), projects lat/lon to planar meters via `Point.from`, and does nearest-neighbor / bounding-box queries. `GeoRoutesKtTest` asserts against specific records in that file, so regenerating the data will require updating the test expectations.
+
+### Testing
+
+Tests run **fully offline** — none touch Egis. The whole suite covers only code that doesn't reach `client/Api.kt`:
+- **Pure unit tests** for `util/` and pure service helpers (`LicenseUtilTest`, `DateUtilTest`, `MigrationUtilTest`, `UserServiceTest` for `getEndTime`).
+- **Mock-mode route tests** (`mock/MockRoutesTest`): spin up the real app with `testApplication { application { module() } }` and drive the full routing stack against the in-memory `MockState` by sending the `X-ParkeerAssistent-Mock: true` header. Because the mock `token` cookie is set **without a path**, the test client's `HttpCookies` storage won't resend it to `/user` etc. — thread the token manually (capture it from each response's `setCookie()` and re-attach via `cookie("token", …)` in a `DefaultRequest` block) instead of relying on cookie persistence. Real browser clients work because they default the path to `/`.
+- **Geo route tests** (`GeoRoutesKtTest`): also offline, since `GeoService` is the one service that never calls upstream.
+
+Tests call `module()` directly (not `main()`), so the `PORT` env var isn't needed, but the Gradle `JavaExec` test task still injects `.env` if present.
+
+To test the upstream-calling services (`ParkingService`/`UserService`/`VisitorService` DTO conversion), `client/Api.kt`'s `HttpClient` would need to be made injectable so a `MockEngine` can stand in — not done yet.
