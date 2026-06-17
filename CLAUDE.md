@@ -8,7 +8,12 @@ A Kotlin/Ktor (Netty) **backend-for-frontend** for the ParkeerAssistent iOS app 
 
 ## Commands
 
-Build/run/test use the Gradle wrapper (`./gradlew`). JDK 21, Kotlin 2.2.
+Build/run/test use the Gradle wrapper (`./gradlew`). JDK 25, Kotlin 2.2.
+
+> JDK 24+ gates "restricted" native calls (JEP 472). Netty's `System.loadLibrary` for its
+> native transport would otherwise warn (and eventually fail), so the build passes
+> `--enable-native-access=ALL-UNNAMED` via `applicationDefaultJvmArgs` (covers `./gradlew run`
+> and the `installDist` start script the Docker image runs) and via `jvmArgs` on the `test` task.
 
 | Command | Purpose |
 | --- | --- |
