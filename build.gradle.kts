@@ -9,6 +9,9 @@ version = "3.0.1"
 
 application {
     mainClass = "nl.parkeerassistent.ApplicationKt"
+    // JDK 24+ warns (and will eventually fail) when Netty loads its native
+    // transport via System.loadLibrary unless native access is enabled.
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 repositories {
@@ -50,4 +53,5 @@ tasks.withType(JavaExec::class.java) {
 
 tasks.test {
     useJUnitPlatform()
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
