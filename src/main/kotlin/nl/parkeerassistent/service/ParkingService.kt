@@ -75,8 +75,14 @@ object ParkingService {
     suspend fun get(call: ApplicationCall): ParkingResponse {
         val parkingSessions = retrieveParkingSessions(call)
 
-        val active = parkingSessions.filter { it.status == "ACTIVE" }.map(this::convertParkingSession)
-        val scheduled = parkingSessions.filter { it.status == "FUTURE" }.map(this::convertParkingSession)
+        val active = parkingSessions
+            .filter { it.status == "ACTIVE" }
+            .map(this::convertParkingSession)
+            .sortedBy { it.startTime }
+        val scheduled = parkingSessions
+            .filter { it.status == "FUTURE" }
+            .map(this::convertParkingSession)
+            .sortedBy { it.startTime }
 
         Metrics.logAndCount(call, Method.Get, Level.INFO, "SUCCESS")
         return ParkingResponse(active, scheduled)
