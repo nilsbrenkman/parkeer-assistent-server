@@ -1,5 +1,7 @@
 package nl.parkeerassistent
 
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -28,11 +30,17 @@ fun Application.configureHTTP() {
         json(JSON)
     }
     install(CORS) {
-        anyMethod()
-        allowHeaders { true }
         allowOrigins { true }
-        anyHost()
+        allowMethod(HttpMethod.Options)
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Patch)
+        allowMethod(HttpMethod.Delete)
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Authorization)
+        allowHeaders { true }
         allowCredentials = true
+        anyHost()
     }
     install(ForwardedHeaders)
     install(XForwardedHeaders)
