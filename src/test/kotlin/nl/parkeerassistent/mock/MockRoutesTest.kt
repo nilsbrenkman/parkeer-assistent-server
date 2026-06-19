@@ -139,6 +139,7 @@ class MockRoutesTest {
         assertEquals(HttpStatusCode.OK, user.status, "status=${user.status} body=${user.bodyAsText()}")
         val userResponse = json.decodeFromString<UserResponse>(user.bodyAsText())
         assertNotNull(userResponse.balance.toDoubleOrNull())
+        assertNotNull(userResponse.regime)
         assertTrue(userResponse.regime.days.isNotEmpty())
 
         // The dummy state seeds two visitors.

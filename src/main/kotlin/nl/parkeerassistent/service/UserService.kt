@@ -95,8 +95,27 @@ object UserService {
             secure = false,
         )
         val productDetails = getClientProduct(call, product.id)
-        val (zoneId, regime) = getParkingZone(call, product.id, productDetails.ssp.parkingMeterId)
-        val hourRate = getHourRate(call, product.id, productDetails.ssp.parkingMeterId, regime)
+        // The account may have no favorite parking meter (upstream returns
+        // `favorite_machine_number: null`); without one there is no default
+        // zone/regime/rate to resolve, so leave them unset.
+        val parkingMeterId = productDetails.ssp.parkingMeterId
+        if (parkingMeterId == null) {
+            Metrics.logAndCount(call, Method.Get, Level.WARN, "NO_PARKING_METER")
+            return UserResponse(
+                balance = formatBalance(productDetails.ssp.mainAccount.moneyBalance ?: 0),
+                hourRate = 0.1,
+                productId = product.id,
+                zoneId = 0,
+                parkingMeterId = 0,
+                regime = Regime(
+                    days = DayOfWeek.entries.map {
+                        RegimeDay(weekday = it.name, startTime = "00:00", endTime = "23:59")
+                    }
+                ),
+            )
+        }
+        val (zoneId, regime) = getParkingZone(call, product.id, parkingMeterId)
+        val hourRate = getHourRate(call, product.id, parkingMeterId, regime)
 
         Metrics.logAndCount(call, Method.Get, Level.INFO, "SUCCESS")
         return UserResponse(
@@ -104,7 +123,7 @@ object UserService {
             hourRate = hourRate,
             productId = product.id,
             zoneId = zoneId,
-            parkingMeterId = productDetails.ssp.parkingMeterId,
+            parkingMeterId = parkingMeterId,
             regime = regime,
         )
     }
