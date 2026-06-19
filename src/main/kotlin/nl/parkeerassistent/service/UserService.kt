@@ -103,15 +103,11 @@ object UserService {
             Metrics.logAndCount(call, Method.Get, Level.WARN, "NO_PARKING_METER")
             return UserResponse(
                 balance = formatBalance(productDetails.ssp.mainAccount.moneyBalance ?: 0),
-                hourRate = 0.1,
                 productId = product.id,
-                zoneId = 0,
-                parkingMeterId = 0,
-                regime = Regime(
-                    days = DayOfWeek.entries.map {
-                        RegimeDay(weekday = it.name, startTime = "00:00", endTime = "23:59")
-                    }
-                ),
+                parkingMeterId = null,
+                zoneId = null,
+                hourRate = null,
+                regime = null,
             )
         }
         val (zoneId, regime) = getParkingZone(call, product.id, parkingMeterId)
@@ -120,10 +116,10 @@ object UserService {
         Metrics.logAndCount(call, Method.Get, Level.INFO, "SUCCESS")
         return UserResponse(
             balance = formatBalance(productDetails.ssp.mainAccount.moneyBalance ?: 0),
-            hourRate = hourRate,
             productId = product.id,
-            zoneId = zoneId,
             parkingMeterId = parkingMeterId,
+            zoneId = zoneId,
+            hourRate = hourRate,
             regime = regime,
         )
     }
@@ -168,8 +164,8 @@ object UserService {
         val hourRate = getHourRate(call, productId, parkingMeterId, regime)
         Metrics.logAndCount(call, Method.Regime, Level.INFO, "SUCCESS")
         return RegimeResponse(
-            hourRate = hourRate,
             zoneId = zoneId,
+            hourRate = hourRate,
             regime = regime,
         )
     }

@@ -37,6 +37,13 @@ import java.util.zip.Deflater
 import java.util.zip.Inflater
 
 private const val TOKEN_COOKIE = "token"
+private const val NO_PARKING_METER = false
+
+private fun <T> noParkingMeter(t: T): T? {
+    if (NO_PARKING_METER) return null
+    return t
+}
+
 
 fun Route.mockRouting() {
     get("/login") {
@@ -63,11 +70,11 @@ fun Route.mockRouting() {
             call.respond(
                 UserResponse(
                     balance = "%.2f".format(state.balance),
-                    hourRate = 2.34,
                     productId = 0,
-                    zoneId = 1,
-                    parkingMeterId = 55105,
-                    regime = MockState.regime,
+                    parkingMeterId = noParkingMeter(55105),
+                    zoneId = noParkingMeter(1),
+                    hourRate = noParkingMeter(2.34),
+                    regime = noParkingMeter(MockState.regime),
                 )
             )
         }
@@ -82,7 +89,11 @@ fun Route.mockRouting() {
                 call.respond(HttpStatusCode.BadRequest, Response(false, "Ongeldige parkeerzone"))
                 return@get
             }
-            call.respond(RegimeResponse(hourRate = 2.34, zoneId = 1, regime = MockState.regime))
+            call.respond(RegimeResponse(
+                zoneId = noParkingMeter(1),
+                hourRate = noParkingMeter(2.34),
+                regime = noParkingMeter(MockState.regime),
+            ))
         }
     }
     route("/parking") {
