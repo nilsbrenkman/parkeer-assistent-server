@@ -19,8 +19,6 @@ repositories {
 }
 
 dependencies {
-    implementation(libs.jsoup)
-    implementation(libs.kotlin.css)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.client.core)
