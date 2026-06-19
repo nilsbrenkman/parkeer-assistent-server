@@ -1,21 +1,15 @@
 [versions]
-jsoup = "1.22.2"
 kotlin = "2.4.0"
 ktor = "3.5.0"
 logback = "1.5.34"
 prometheus = "1.17.0"
-ratelimiting = "2.2.1"
 serialization = "1.11.0"
-wrappers = "2026.6.5"
 
 [libraries]
-jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
-kotlin-css = { module = "org.jetbrains.kotlin-wrappers:kotlin-css", version.ref = "wrappers" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-java = { module = "io.ktor:ktor-client-java", version.ref = "ktor" }
-ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 ktor-server-compression = { module = "io.ktor:ktor-server-compression", version.ref = "ktor" }
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
