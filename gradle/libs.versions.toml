@@ -1,6 +1,6 @@
 [versions]
-kotlin = "2.4.10"
-ktor = "3.5.2"
+kotlin = "2.4.20"
+ktor = "3.6.0"
 logback = "1.6.3"
 prometheus = "1.17.1"
 serialization = "1.11.0"
